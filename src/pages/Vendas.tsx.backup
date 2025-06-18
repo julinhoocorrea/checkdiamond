@@ -1,0 +1,24 @@
+// ... existing code ... <imports and component setup>
+
+  const onSubmit = (data: VendaForm) => {
+    const selectedRevendedor = revendedores.find(r => r.id === data.revendedorId);
+    addVenda({
+      date: new Date(data.date),
+      revendedorId: data.revendedorId,
+      revendedorName: selectedRevendedor?.name || '',
+      diamondQuantity: data.diamondQuantity,
+      totalValue: data.totalValue,
+      status: 'pendente',
+      
+      kwaiId: data.kwaiId || undefined,
+      deliveryStatus: 'pendente',
+      
+    });
+
+// ... existing code ... <rest of onSubmit function>
+
+              } catch (error) {
+                const errorMessage = error instanceof Error ? error instanceof Error ? error instanceof Error ? error.message : "Erro desconhecido" : "Erro desconhecido" : 'Erro desconhecido';
+                alert(`❌ Erro: ${errorMessage}`);
+
+// ... existing code ... <rest of the file>

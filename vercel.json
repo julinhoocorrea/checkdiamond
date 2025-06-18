@@ -1,0 +1,41 @@
+{
+  "framework": "vite",
+  "buildCommand": "bun run build",
+  "outputDirectory": "dist",
+  "installCommand": "bun install",
+  "devCommand": "bun run dev",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/service-worker.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/static/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ],
+  "env": {
+    "VITE_INTER_CLIENT_ID": "@inter_client_id",
+    "VITE_INTER_CLIENT_SECRET": "@inter_client_secret",
+    "VITE_INTER_PIX_KEY": "@inter_pix_key",
+    "VITE_4SEND_API_TOKEN": "@fourgsend_api_token",
+    "VITE_PIX_DEFAULT_PROVIDER": "inter",
+    "VITE_INTER_BASE_URL": "https://cdpj.partners.bancointer.com.br"
+  }
+}
