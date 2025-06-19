@@ -218,7 +218,10 @@ export function Envios() {
     try {
       updateEnvioStatus(envio.id, 'processing', { attempts: envio.attempts + 1 });
 
-      toast.info(`🎯 Processando envio para ${envio.customerName}...`, {
+      const isSimulation = KwaiService.isSimulationMode();
+      const modeText = isSimulation ? '[SIMULADO]' : '';
+
+      toast.info(`🎯 ${modeText} Processando envio para ${envio.customerName}...`, {
         description: `${envio.diamondQuantity} diamantes para ID: ${envio.kwaiId}`
       });
 
