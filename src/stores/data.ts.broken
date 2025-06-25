@@ -1,0 +1,479 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { Revendedor, Venda, Estoque, EstoqueItem, EstoqueMovimentacao, IAConfig, DashboardMetrics, DashboardChartData, PendingPayment, PaymentWebhook } from '@/types';
+import { BUSINESS_CONSTANTS } from '@/types';
+import { WebhookService } from '@/services/webhookService';
+
+interface DataState {
+  revendedores: Revendedor[];
+  vendas: Venda[];
+  estoque: Estoque;
+  iaConfigs: IAConfig[];
+  usdRate: number;
+  pendingPayments: PendingPayment[];
+
+  // Actions
+  addRevendedor: (revendedor: Omit<Revendedor, 'id' | 'createdAt'>) => void;
+  updateRevendedor: (id: string, data: Partial<Revendedor>) => void;
+  addVenda: (venda: Omit<Venda, 'id' | 'cost' | 'profit' | 'commission' | 'netProfit'>) => void;
+  updateVendaStatus: (id: string, status: 'pago' | 'pendente') => void;
+  updateDeliveryStatus: (id: string, deliveryStatus: 'pendente' | 'enviado' | 'entregue', userId?: string) => void;
+
+  // Estoque Actions
+  addEstoqueItem: (item: Omit<EstoqueItem, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateEstoqueItem: (id: string, data: Partial<EstoqueItem>) => void;
+  removeEstoqueItem: (id: string) => void;
+  addMovimentacao: (movimentacao: Omit<EstoqueMovimentacao, 'id' | 'date'>) => void;
+  updateItemQuantity: (itemId: string, quantity: number, type: 'entrada' | 'saida' | 'ajuste', reason: string, unitPrice?: number) => void;
+
+  // Payment Actions
+  addPendingPayment: (payment: Omit<PendingPayment, 'id' | 'createdAt'>) => void;
+  updatePaymentStatus: (paymentId: string, status: PendingPayment['status'], paidAt?: Date) => void;
+  processPaymentWebhook: (webhook: PaymentWebhook) => boolean;
+  createVendaFromPayment: (paymentId: string) => boolean;
+  checkPaymentStatus: (paymentId: string) => Promise<void>;
+
+  // Computed
+  getDashboardMetrics: () => DashboardMetrics;
+  getChartData: () => DashboardChartData[];
+}
+
+// Função para calcular valores de venda
+const calculateSaleValues = (diamondQuantity: number, totalValue: number, usdRate: number) => {
+  const diamondsInUsd = diamondQuantity / BUSINESS_CONSTANTS.USD_DIAMONDS;
+  const cost = diamondsInUsd * (usdRate + BUSINESS_CONSTANTS.VET_COST);
+  const grossProfit = totalValue - cost;
+  const commission = totalValue * (BUSINESS_CONSTANTS.COMMISSION_RATE / 100);
+  const tax = grossProfit * (BUSINESS_CONSTANTS.TAX_RATE / 100);
+  const netProfit = grossProfit - tax - commission;
+
+  return { cost, profit: grossProfit, commission, netProfit };
+};
+
+// Dados mock iniciais
+const mockRevendedores: Revendedor[] = [
+  {
+    id: '1',
+    name: 'João Silva',
+    phone: '(11) 99999-9999',
+    cpf: '123.456.789-00',
+    commission: 1.5,
+    totalSold: 15420.50,
+    commissionPaid: 231.31,
+    active: true,
+    createdAt: new Date('2024-01-15')
+  },
+  {
+    id: '2',
+    name: 'Maria Santos',
+    phone: '(11) 88888-8888',
+    commission: 1.5,
+    totalSold: 8750.00,
+    commissionPaid: 131.25,
+    active: true,
+    createdAt: new Date('2024-02-10')
+  }
+];
+
+const mockVendas: Venda[] = [
+  {
+    id: '1',
+    date: new Date('2024-06-10T10:30:00'),
+    revendedorId: '1',
+    revendedorName: 'João Silva',
+    diamondQuantity: 500,
+    totalValue: 34.45,
+    cost: 25.20,
+    profit: 9.25,
+    commission: 0.52,
+    netProfit: 6.20,
+    status: 'pago',
+    deliveryStatus: 'enviado',
+    deliveredAt: new Date('2024-06-10T11:00:00'),
+    deliveredBy: 'Admin Check',
+    kwaiId: 'Revendacheck2',
+    kwaiLink: 'https://k.kwai.com/u/@Revendacheck2/nXqKVCuX'
+  },
+  {
+    id: '2',
+    date: new Date('2024-06-09T15:45:00'),
+    revendedorId: '2',
+    revendedorName: 'Maria Santos',
+    diamondQuantity: 1000,
+    totalValue: 68.90,
+    cost: 50.40,
+    profit: 18.50,
+    commission: 1.03,
+    netProfit: 12.40,
+    status: 'pendente',
+    deliveryStatus: 'pendente'
+  }
+];
+
+const mockEstoqueItems: EstoqueItem[] = [
+  {
+    id: '1',
+    name: 'Diamantes Básicos',
+    description: 'Pacote padrão de diamantes para Kwai',
+    quantity: 25000,
+    price: 0.06889, // R$ por diamante
+    category: 'diamonds',
+    active: true,
+    createdAt: new Date('2024-01-15'),
+    updatedAt: new Date()
+  },
+  {
+    id: '2',
+    name: 'Diamantes Premium',
+    description: 'Diamantes com desconto especial',
+    quantity: 10000,
+    price: 0.065,
+    category: 'packages',
+    active: true,
+    createdAt: new Date('2024-02-01'),
+    updatedAt: new Date()
+  },
+  {
+    id: '3',
+    name: 'Pacote Promocional',
+    description: 'Oferta limitada com preço especial',
+    quantity: 5000,
+    price: 0.060,
+    category: 'special',
+    active: true,
+    createdAt: new Date('2024-03-01'),
+    updatedAt: new Date()
+  }
+];
+
+export const useDataStore = create<DataState>()(
+  persist(
+    (set, get) => {
+      // Configurar webhook service
+      const webhookService = WebhookService.getInstance();
+      webhookService.addListener((webhook: PaymentWebhook) => {
+        get().processPaymentWebhook(webhook);
+      });
+
+      return {
+      revendedores: mockRevendedores,
+      vendas: mockVendas,
+      estoque: {
+        items: mockEstoqueItems,
+        currentStock: 0,
+        movimentacoes: [],
+        movimentacoes: [],
+      },
+      iaConfigs: [
+        {
+          id: '1',
+          command: 'preço',
+          response: 'Olá! O preço atual dos diamantes é R$ 6,89 para 100 diamantes. Posso ajudar com mais alguma coisa?',
+          active: true
+        },
+        {
+          id: '2',
+          command: 'estoque',
+          response: 'Temos diamantes disponíveis! Para fazer seu pedido, entre em contato com seu revendedor.',
+          active: true
+        }
+      ],
+      usdRate: 5.20, // Cotação do dólar mock
+      pendingPayments: [],
+
+      addRevendedor: (revendedor) => {
+        const newRevendedor: Revendedor = {
+          ...revendedor,
+          id: Math.random().toString(36).substr(2, 9),
+          createdAt: new Date(),
+        };
+        set((state) => ({
+          revendedores: [...state.revendedores, newRevendedor]
+        }));
+      },
+
+      updateRevendedor: (id, data) => {
+        set((state) => ({
+          revendedores: state.revendedores.map(r =>
+            r.id === id ? { ...r, ...data } : r
+          )
+        }));
+      },
+
+      addVenda: (vendaData) => {
+        const { usdRate } = get();
+        const calculations = calculateSaleValues(
+          vendaData.diamondQuantity,
+          vendaData.totalValue,
+          usdRate
+        );
+
+        const newVenda: Venda = {
+          ...vendaData,
+          id: Math.random().toString(36).substr(2, 9),
+          ...calculations,
+          deliveryStatus: 'pendente'
+        };
+
+        set((state) => ({
+          vendas: [...state.vendas, newVenda]
+        }));
+
+        // Atualizar totais do revendedor
+        const { updateRevendedor } = get();
+        const revendedor = get().revendedores.find(r => r.id === vendaData.revendedorId);
+        if (revendedor) {
+          updateRevendedor(vendaData.revendedorId, {
+            totalSold: revendedor.totalSold + vendaData.totalValue,
+            commissionPaid: revendedor.commissionPaid + calculations.commission
+          });
+        }
+      },
+
+      updateVendaStatus: (id, status) => {
+        set((state) => ({
+          vendas: state.vendas.map(v =>
+            v.id === id ? { ...v, status } : v
+          )
+        }));
+      },
+
+      updateDeliveryStatus: (id, deliveryStatus, userId) => {
+        set((state) => ({
+          vendas: state.vendas.map(v =>
+            v.id === id ? {
+              ...v,
+              deliveryStatus,
+              deliveredAt: deliveryStatus === 'enviado' ? new Date() : v.deliveredAt,
+              deliveredBy: deliveryStatus === 'enviado' && userId ? userId : v.deliveredBy
+            } : v
+          )
+        }));
+      },
+
+      // Estoque Actions
+      addEstoqueItem: (item) => {
+        const newItem: EstoqueItem = {
+          ...item,
+          id: Math.random().toString(36).substr(2, 9),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        set((state) => ({
+          estoque: {
+            ...state.estoque,
+            items: [...state.estoque.items, newItem],
+          }
+        }));
+      },
+
+      updateEstoqueItem: (id, data) => {
+        set((state) => ({
+          estoque: {
+            ...state.estoque,
+            items: state.estoque.items.map(item =>
+              item.id === id ? { ...item, ...data, updatedAt: new Date() } : item
+            )
+          }
+        }));
+      },
+
+      removeEstoqueItem: (id) => {
+        set((state) => ({
+          estoque: {
+            ...state.estoque,
+            items: state.estoque.items.filter(item => item.id !== id)
+          }
+        }));
+      },
+
+      addMovimentacao: (movimentacao) => {
+        const newMovimentacao: EstoqueMovimentacao = {
+          ...movimentacao,
+          id: Math.random().toString(36).substr(2, 9),
+          date: new Date(),
+        };
+        set((state) => ({
+          estoque: {
+            ...state.estoque,
+            movimentacoes: [...state.estoque.movimentacoes, newMovimentacao]
+          }
+        }));
+      },
+
+      updateItemQuantity: (itemId, quantity, type, reason, unitPrice) => {
+        set((state) => {
+          const item = state.estoque.items.find(i => i.id === itemId);
+          if (!item) return state;
+
+          const newQuantity = type === 'entrada'
+            ? item.quantity + quantity
+            : type === 'saida'
+            ? item.quantity - quantity
+            : quantity; // ajuste manual
+
+          const movimentacao: EstoqueMovimentacao = {
+            id: Math.random().toString(36).substr(2, 9),
+            itemId,
+            itemName: item.name,
+            type,
+            quantity,
+            reason,
+            date: new Date(),
+            userId: '1', // mock user id
+          };
+
+          return {
+            estoque: {
+              items: state.estoque.items.map(i =>
+                i.id === itemId ? { ...i, quantity: Math.max(0, newQuantity), updatedAt: new Date() } : i
+              ),
+              movimentacoes: [...state.estoque.movimentacoes, movimentacao]
+            }
+          };
+        });
+      },
+
+      // Payment Actions
+      addPendingPayment: (payment) => {
+        const newPayment: PendingPayment = {
+          ...payment,
+          id: Math.random().toString(36).substr(2, 9),
+          createdAt: new Date(),
+        };
+        set((state) => ({
+          pendingPayments: [...state.pendingPayments, newPayment]
+        }));
+      },
+
+      updatePaymentStatus: (paymentId, status, paidAt) => {
+        set((state) => ({
+          pendingPayments: state.pendingPayments.map(p =>
+            p.paymentId === paymentId
+              ? { ...p, status, paidAt: paidAt || p.paidAt }
+              : p
+          )
+        }));
+      },
+
+      processPaymentWebhook: (webhook) => {
+        const { updatePaymentStatus, createVendaFromPayment } = get();
+
+        // Encontrar pagamento pendente
+        const payment = get().pendingPayments.find(p => p.paymentId === webhook.id);
+        if (!payment) return false;
+
+        // Atualizar status do pagamento
+        if (webhook.status === 'paid') {
+          updatePaymentStatus(webhook.id, 'paid', new Date(webhook.paidAt || new Date()));
+
+          // Criar venda automaticamente
+          createVendaFromPayment(webhook.id);
+          return true;
+        } else if (webhook.status === 'cancelled' || webhook.status === 'expired') {
+          updatePaymentStatus(webhook.id, 'cancelled');
+        }
+
+        return false;
+      },
+
+      createVendaFromPayment: (paymentId) => {
+        const { addVenda } = get();
+        const payment = get().pendingPayments.find(p => p.paymentId === paymentId);
+
+        if (!payment || payment.status !== 'paid') return false;
+
+        // Encontrar revendedor "Vendas Online" ou criar um padrão
+        let onlineRevendedor = get().revendedores.find(r => r.name === 'Vendas Online');
+        if (!onlineRevendedor) {
+          get().addRevendedor({
+            name: 'Vendas Online',
+            phone: '(11) 99999-0000',
+            commission: 0, // Vendas diretas não têm comissão
+            totalSold: 0,
+            commissionPaid: 0,
+            active: true,
+          });
+          onlineRevendedor = get().revendedores.find(r => r.name === 'Vendas Online')!;
+        }
+
+        // Criar venda
+        addVenda({
+          date: payment.paidAt || payment.createdAt,
+          revendedorId: onlineRevendedor.id,
+          revendedorName: 'Vendas Online',
+          diamondQuantity: payment.diamondQuantity,
+          totalValue: payment.totalValue,
+          status: 'pago',
+          kwaiId: payment.kwaiId,
+          kwaiLink: `Venda Online - ${payment.customerName}`,
+          deliveryStatus: 'pendente',
+
+        return true;
+      },
+
+      checkPaymentStatus: async (paymentId) => {
+        try {
+          const response = await fetch(`https://api.best4send.com/p/v1/links/${paymentId}`, {
+            headers: {
+              'X-API-Token': 'cm7domhw703b2q57w9fjaczfa',
+              'Accept': 'application/json',
+            }
+          });
+
+          if (response.ok) {
+            const paymentData = await response.json();
+            const { updatePaymentStatus, createVendaFromPayment } = get();
+
+            if (paymentData.status === 'paid' && paymentData.paidAt) {
+              updatePaymentStatus(paymentId, 'paid', new Date(paymentData.paidAt));
+              createVendaFromPayment(paymentId);
+            }
+          }
+        } catch (error) {
+          console.error('Erro ao verificar status do pagamento:', error);
+        }
+      },
+
+      getDashboardMetrics: () => {
+        const { vendas } = get();
+        const today = new Date().toDateString();
+        const todayVendas = vendas.filter(v => v.date.toDateString() === today);
+
+        return {
+          receitaBruta: todayVendas.reduce((sum, v) => sum + v.totalValue, 0),
+          lucroLiquido: todayVendas.reduce((sum, v) => sum + v.netProfit, 0),
+          diamantesVendidos: todayVendas.reduce((sum, v) => sum + v.diamondQuantity, 0),
+          comissaoPaga: todayVendas.reduce((sum, v) => sum + v.commission, 0),
+          saldoConta: 45230.50 // mock
+        };
+      },
+
+      getChartData: () => {
+        const { vendas } = get();
+        const last7Days = Array.from({ length: 7 }, (_, i) => {
+          const date = new Date();
+          date.setDate(date.getDate() - i);
+          return date.toDateString();
+        }).reverse();
+
+        return last7Days.map(dateStr => {
+          const dayVendas = vendas.filter(v => v.date.toDateString() === dateStr);
+          return {
+            date: new Date(dateStr).toLocaleDateString('pt-BR', {
+              day: '2-digit',
+              month: '2-digit'
+            }),
+            receita: dayVendas.reduce((sum, v) => sum + v.totalValue, 0),
+            lucro: dayVendas.reduce((sum, v) => sum + v.netProfit, 0),
+            comissao: dayVendas.reduce((sum, v) => sum + v.commission, 0)
+          };
+        });
+      }
+      };
+    },
+    {
+      name: 'data-storage',
+    }
+  )
+);
