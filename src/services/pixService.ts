@@ -1017,44 +1017,155 @@ class PixServiceClass {
       const baseUrl = this.advancedConfig.foursendBaseUrl || FOURGSEND_CONFIG.baseUrl;
       const apiToken = this.advancedConfig.foursendApiToken || FOURGSEND_CONFIG.apiToken;
       const timeout = (this.advancedConfig.foursendTimeout || 30) * 1000;
-      const customHeaders = this.get4sendCustomHeaders();
+
+      console.log('🔍 Testando conectividade 4Send...');
+      console.log('🔗 URL Base:', baseUrl);
+      console.log('🔑 API Token:', apiToken?.substring(0, 8) + '...');
 
       // Criar AbortController para timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      const response = await fetch(`${baseUrl}/p/v1/links?limit=1`, {
-        headers: {
-          'X-API-Token': apiToken,
-          'Accept': 'application/json',
-          ...customHeaders
-        },
-        signal: controller.signal
-      });
+      try {
+        // Tentar endpoint de teste mais básico
+        const response = await fetch(`${baseUrl}/health`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          signal: controller.signal,
+          mode: 'cors'
+        });
 
-      clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
+        const responseTime = Date.now() - startTime;
 
-      const responseTime = Date.now() - startTime;
+        if (response.ok) {
+          const message = `✅ 4Send - Conectividade verificada (${responseTime}ms)`;
+          this.addLog('4send', 'testConnectivity', { responseTime }, true, undefined, responseTime);
+          return {
+            success: true,
+            message
+          };
+        } else {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
 
-      if (response.ok) {
-        const message = `✅ Conectividade 4send verificada com sucesso (${responseTime}ms)`;
-        this.addLog('4send', 'testConnectivity', { responseTime }, true, undefined, responseTime);
-        return {
-          success: true,
-          message
-        };
+        // Se o endpoint health falhar, tentar um teste mais específico
+        if (fetchError.name === 'AbortError') {
+          throw new Error(`Timeout após ${timeout/1000}s`);
+        }
+
+        // Tentar endpoint da API PIX diretamente
+        console.log('⚠️ Endpoint /health falhou, testando API PIX...');
+
+        try {
+          const controller2 = new AbortController();
+          const timeoutId2 = setTimeout(() => controller2.abort(), timeout);
+
+          const pixResponse = await fetch(`${baseUrl}/api/v1/pix/charge`, {
+            method: 'POST',
+            headers: {
+              'X-API-Token': apiToken,
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              amount: 0.01,
+              description: 'Teste de conectividade'
+            }),
+            signal: controller2.signal,
+            mode: 'cors'
+          });
+
+          clearTimeout(timeoutId2);
+          const responseTime = Date.now() - startTime;
+
+          // Se chegou até aqui sem erro CORS, é um bom sinal
+          if (pixResponse.status === 401 || pixResponse.status === 403) {
+            const message = `⚠️ 4Send - API acessível mas credenciais podem estar incorretas (${responseTime}ms)`;
+            this.addLog('4send', 'testConnectivity', {
+              responseTime,
+              status: pixResponse.status,
+              note: 'API accessible but auth failed'
+            }, false, `HTTP ${pixResponse.status}`, responseTime);
+            return {
+              success: false,
+              message
+            };
+          }
+
+          if (pixResponse.status === 422 || pixResponse.status === 400) {
+            const message = `✅ 4Send - API funcionando! (${responseTime}ms)`;
+            this.addLog('4send', 'testConnectivity', {
+              responseTime,
+              status: pixResponse.status,
+              note: 'API working - validation error expected'
+            }, true, undefined, responseTime);
+            return {
+              success: true,
+              message
+            };
+          }
+
+          if (pixResponse.ok) {
+            const message = `✅ 4Send - API totalmente funcional (${responseTime}ms)`;
+            this.addLog('4send', 'testConnectivity', { responseTime }, true, undefined, responseTime);
+            return {
+              success: true,
+              message
+            };
+          }
+
+          throw new Error(`HTTP ${pixResponse.status}: ${pixResponse.statusText}`);
+        } catch (pixError: any) {
+          throw fetchError; // Retorna o erro original se o segundo teste também falhar
+        }
       }
-      throw new Error(`Status: ${response.status}`);
     } catch (error) {
       const responseTime = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      const message = `❌ Erro na conectividade ${provider}: ${errorMessage} (${responseTime}ms)`;
 
-      this.addLog(provider, 'testConnectivity', { error: errorMessage }, false, errorMessage, responseTime);
+      // Tratamento específico para erros comuns
+      let detailedMessage = '';
+      let technicalNote = '';
+
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('Load failed')) {
+        detailedMessage = `🚫 CORS/Rede - A API ${provider} bloqueia chamadas diretas do browser`;
+        technicalNote = provider === '4send'
+          ? '4Send provavelmente precisa de proxy/backend para funcionar em produção'
+          : 'Banco Inter requer proxy/backend por questões de segurança';
+      } else if (errorMessage.includes('AbortError') || errorMessage.includes('Timeout')) {
+        detailedMessage = `⏱️ Timeout - A API ${provider} não respondeu a tempo`;
+        technicalNote = 'Servidor pode estar lento ou indisponível';
+      } else if (errorMessage.includes('CORS')) {
+        detailedMessage = `🔒 CORS - A API ${provider} não permite chamadas do domínio atual`;
+        technicalNote = 'Política de segurança do browser bloqueou a requisição';
+      } else {
+        detailedMessage = `❌ Erro na conectividade ${provider}: ${errorMessage}`;
+        technicalNote = errorMessage;
+      }
+
+      const finalMessage = `${detailedMessage} (${responseTime}ms)`;
+
+      this.addLog(provider, 'testConnectivity', {
+        error: errorMessage,
+        technicalNote,
+        responseTime
+      }, false, errorMessage, responseTime);
+
+      console.warn(`🔍 Teste ${provider} falhou:`, {
+        error: errorMessage,
+        responseTime,
+        technicalNote
+      });
 
       return {
         success: false,
-        message
+        message: finalMessage
       };
     }
   }

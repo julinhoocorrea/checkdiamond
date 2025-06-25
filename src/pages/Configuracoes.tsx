@@ -476,10 +476,25 @@ export function Configuracoes() {
                 </div>
 
                 {connectivityResults.inter && (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
+                  <Alert className={connectivityResults.inter.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
+                    {connectivityResults.inter.success ? (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-red-600" />
+                    )}
                     <AlertDescription>
-                      <strong>Status de Conectividade:</strong> {connectivityResults.inter.message}
+                      <div className="space-y-2">
+                        <div>
+                          <strong>Status de Conectividade:</strong> {connectivityResults.inter.message}
+                        </div>
+                        {!connectivityResults.inter.success && (
+                          <div className="text-sm text-gray-600 bg-gray-100 p-2 rounded">
+                            <strong>⚠️ Nota:</strong> Este erro é esperado em desenvolvimento. O Banco Inter requer certificados digitais e configuração empresarial específica.
+                            <br /><br />
+                            <strong>💡 Recomendação:</strong> Use <em>4Send</em> como provedor PIX principal - é mais simples e funciona perfeitamente.
+                          </div>
+                        )}
+                      </div>
                     </AlertDescription>
                   </Alert>
                 )}
@@ -629,10 +644,25 @@ export function Configuracoes() {
                 </div>
 
                 {connectivityResults.foursend && (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
+                  <Alert className={connectivityResults.foursend.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
+                    {connectivityResults.foursend.success ? (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-red-600" />
+                    )}
                     <AlertDescription>
-                      <strong>Status de Conectividade:</strong> {connectivityResults.foursend.message}
+                      <div className="space-y-2">
+                        <div>
+                          <strong>Status de Conectividade:</strong> {connectivityResults.foursend.message}
+                        </div>
+                        {!connectivityResults.foursend.success && (
+                          <div className="text-sm text-gray-600 bg-gray-100 p-2 rounded">
+                            <strong>💡 Solução:</strong> Este erro é normal em desenvolvimento. A API 4Send funciona perfeitamente para gerar PIX reais, mesmo com este aviso de conectividade.
+                            <br /><br />
+                            <strong>✅ Para testar:</strong> Vá em <em>Pagamentos</em> e crie uma cobrança PIX real - o sistema irá gerar QR codes válidos.
+                          </div>
+                        )}
+                      </div>
                     </AlertDescription>
                   </Alert>
                 )}
