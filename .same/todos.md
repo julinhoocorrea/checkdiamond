@@ -8,12 +8,12 @@
 - [x] Fallback inteligente entre provedores PIX
 - [x] Git repository inicializado e código commitado
 - [x] Versão 64 criada com PIX 4Send funcional
+- [x] Push do código para GitHub realizado com sucesso
 
 ## 🔄 Em andamento
 - [ ] Aguardando teste da geração PIX oficial via 4Send
 
 ## 📋 Pendentes
-- [ ] Push do código para GitHub (aguardando URL do repositório)
 - [ ] Correção dos 99 erros de linting (principalmente questões de estilo)
 - [ ] Teste da integração PIX 4Send em produção
 - [ ] Deploy para Netlify após confirmação dos testes
