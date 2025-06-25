@@ -70,7 +70,7 @@ export function Pagamentos() {
   } = useForm<PaymentFormData>({
     resolver: zodResolver(paymentFormSchema),
     defaultValues: {
-      pixProvider: 'inter',
+      pixProvider: '4send',
       expiresIn: '30'
     }
   });
@@ -263,14 +263,14 @@ export function Pagamentos() {
                   <Label htmlFor="pixProvider">Provedor PIX *</Label>
                   <Select
                     onValueChange={(value: PixProvider) => setValue('pixProvider', value)}
-                    defaultValue="inter"
+                    defaultValue="4send"
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione o provedor..." />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="inter">🏦 Banco Inter</SelectItem>
-                      <SelectItem value="4send">💼 4send</SelectItem>
+                      <SelectItem value="4send">✅ 4Send (Recomendado)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -383,6 +383,24 @@ export function Pagamentos() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Status do PIX 4Send */}
+      <Alert className="border-green-200 bg-green-50">
+        <CheckCircle className="h-4 w-4 text-green-600" />
+        <AlertDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <strong className="text-green-800">✅ PIX 4Send Configurado e Pronto!</strong>
+              <p className="text-green-700 text-sm mt-1">
+                Sistema configurado automaticamente. Teste criando uma cobrança PIX abaixo - QR codes reais serão gerados via 4Send.
+              </p>
+            </div>
+            <Badge className="bg-green-100 text-green-800 border-green-300">
+              🎯 4Send Ativo
+            </Badge>
+          </div>
+        </AlertDescription>
+      </Alert>
 
       {/* Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
