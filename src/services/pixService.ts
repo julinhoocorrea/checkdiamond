@@ -17,6 +17,7 @@ const FOURGSEND_CONFIG = {
 
 // Configurações Padrão Avançadas
 const DEFAULT_ADVANCED_CONFIG = {
+  // Global
   globalTimeout: 30,
   maxRetryDelay: 60,
   logRetentionDays: 30,
@@ -26,10 +27,17 @@ const DEFAULT_ADVANCED_CONFIG = {
   enableApiMonitoring: true,
   enableWebhookSignatureValidation: true,
   enableTransactionLogs: true,
+
+  // Banco Inter
   interTimeout: 30,
   interMaxRetries: 3,
   interEnableSSLValidation: true,
   interEnableWebhookValidation: true,
+
+  // 4Send - Dados já preenchidos por padrão
+  foursendApiToken: 'cmcazsovs01k1bm7eei4iqtw0',
+  foursendBaseUrl: 'https://api.4send.com.br',
+  foursendEnvironment: 'production' as const,
   foursendTimeout: 30,
   foursendMaxRetries: 3,
   foursendEnableNotifications: true,
@@ -182,15 +190,44 @@ class PixServiceClass {
   private loadAdvancedConfig(): void {
     try {
       const savedConfig = localStorage.getItem('pixConfigurations');
+
+      // Configurações padrão da 4Send sempre aplicadas
+      const default4SendConfig = {
+        foursendApiToken: 'cmcazsovs01k1bm7eei4iqtw0',
+        foursendBaseUrl: 'https://api.4send.com.br',
+        foursendEnvironment: 'production' as const,
+        foursendTimeout: 30,
+        foursendMaxRetries: 3,
+        foursendEnableNotifications: true,
+        foursendEnableCustomHeaders: false,
+      };
+
       if (savedConfig) {
         const parsed = JSON.parse(savedConfig);
-        this.advancedConfig = { ...DEFAULT_ADVANCED_CONFIG, ...parsed };
+        // Mesclar configurações salvas com padrões, priorizando salvos
+        this.advancedConfig = {
+          ...DEFAULT_ADVANCED_CONFIG,
+          ...default4SendConfig,
+          ...parsed
+        };
+        console.log('✅ Configurações carregadas do localStorage com 4Send padrão');
       } else {
-        this.advancedConfig = { ...DEFAULT_ADVANCED_CONFIG };
+        // Aplicar configurações padrão com 4Send preenchido
+        this.advancedConfig = {
+          ...DEFAULT_ADVANCED_CONFIG,
+          ...default4SendConfig
+        };
+        console.log('🎯 Aplicando configurações padrão com 4Send preenchido');
       }
     } catch (error) {
       console.warn('⚠️ Erro ao carregar configurações avançadas:', error);
-      this.advancedConfig = { ...DEFAULT_ADVANCED_CONFIG };
+      // Fallback com 4Send preenchido
+      this.advancedConfig = {
+        ...DEFAULT_ADVANCED_CONFIG,
+        foursendApiToken: 'cmcazsovs01k1bm7eei4iqtw0',
+        foursendBaseUrl: 'https://api.4send.com.br',
+        foursendEnvironment: 'production'
+      };
     }
   }
 

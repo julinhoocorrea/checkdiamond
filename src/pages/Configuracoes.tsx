@@ -58,7 +58,7 @@ interface ConfigForm {
 }
 
 export function Configuracoes() {
-  const [activeTab, setActiveTab] = useState<'inter' | '4send' | 'advanced'>('inter');
+  const [activeTab, setActiveTab] = useState<'inter' | '4send' | 'advanced'>('4send');
   const [isTestingConnectivity, setIsTestingConnectivity] = useState(false);
   const [connectivityResults, setConnectivityResults] = useState<{
     inter?: { success: boolean; message: string };
@@ -67,25 +67,32 @@ export function Configuracoes() {
 
   const { register, handleSubmit, watch, setValue, reset, getValues, formState: { errors } } = useForm<ConfigForm>({
     defaultValues: {
-      interEnvironment: 'production',
+      // Dados 4Send já preenchidos
+      foursendApiToken: 'cmcazsovs01k1bm7eei4iqtw0',
+      foursendBaseUrl: 'https://api.4send.com.br',
       foursendEnvironment: 'production',
+      foursendTimeout: 30,
+      foursendMaxRetries: 3,
+      foursendEnableNotifications: true,
+      foursendEnableCustomHeaders: false,
+
+      // Banco Inter (vazios por enquanto)
+      interEnvironment: 'production',
+      interTimeout: 30,
+      interMaxRetries: 3,
+      interEnableSSLValidation: true,
+      interEnableWebhookValidation: true,
+
+      // Configurações globais
       globalTimeout: 30,
       maxRetryDelay: 60,
       logRetentionDays: 30,
-      interTimeout: 30,
-      interMaxRetries: 3,
-      foursendTimeout: 30,
-      foursendMaxRetries: 3,
       enableAutoRetry: true,
       enableSecurityValidation: true,
       enableDetailedLogs: false,
       enableApiMonitoring: true,
       enableWebhookSignatureValidation: true,
       enableTransactionLogs: true,
-      interEnableSSLValidation: true,
-      interEnableWebhookValidation: true,
-      foursendEnableNotifications: true,
-      foursendEnableCustomHeaders: false,
     }
   });
 
@@ -109,7 +116,37 @@ export function Configuracoes() {
             description: 'Suas configurações PIX foram restauradas.'
           });
         } else {
-          console.log('ℹ️ Nenhuma configuração salva encontrada');
+          console.log('ℹ️ Nenhuma configuração salva encontrada - aplicando dados 4Send padrão');
+
+          // Aplicar configurações padrão da 4Send automaticamente
+          const defaultConfig = {
+            foursendApiToken: 'cmcazsovs01k1bm7eei4iqtw0',
+            foursendBaseUrl: 'https://api.4send.com.br',
+            foursendEnvironment: 'production' as const,
+            foursendTimeout: 30,
+            foursendMaxRetries: 3,
+            foursendEnableNotifications: true,
+            foursendEnableCustomHeaders: false,
+          };
+
+          // Aplicar apenas os campos da 4Send
+          Object.entries(defaultConfig).forEach(([key, value]) => {
+            setValue(key as keyof ConfigForm, value);
+          });
+
+          console.log('✅ Dados 4Send aplicados automaticamente');
+
+          // Salvar automaticamente no localStorage para persistir
+          try {
+            localStorage.setItem('pixConfigurations', JSON.stringify(defaultConfig));
+            console.log('💾 Configurações 4Send salvas automaticamente no localStorage');
+          } catch (error) {
+            console.warn('⚠️ Erro ao salvar configurações padrão:', error);
+          }
+
+          toast.success('🎯 4Send configurado!', {
+            description: 'Dados da 4Send preenchidos e salvos automaticamente.'
+          });
         }
       } catch (error) {
         console.error('❌ Erro ao carregar configurações:', error);
